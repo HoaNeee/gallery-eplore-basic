@@ -43,9 +43,11 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 ## How to test ?
 
-You can test quickly by accessing the [live demo]().
+You can test quickly by accessing the [Live Demo](https://gallery-eplore-basic-iojb.vercel.app/).
 
 ## Frameworks and Libraries
+
+Inspiration: [Pixel](https://www.pexels.com/vi-vn/).
 
 Backend: [Json Server](https://github.com/typicode/json-server/tree/v0?tab=readme-ov-file)
 
