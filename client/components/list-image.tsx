@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 
-import { fetcher, get } from "@/utils/request";
+import { fetcher } from "@/utils/request";
 import {
 	Dispatch,
 	useCallback,
@@ -48,7 +48,10 @@ import {
 } from "./ui/sheet";
 import { useIsMobile } from "@/hooks/use-mobile";
 import useSWR from "swr";
+import useSWRInfinite from "swr/infinite";
 import Viewer from "viewerjs";
+
+const maxHeight = 800;
 
 const initialFilterValues = {
 	direction: "",
@@ -437,30 +440,14 @@ const SortSelector = () => {
 const ImageComponent = ({
 	image,
 	loading,
-	listRef,
 }: {
 	image: TImage | null;
 	loading?: boolean;
-	listRef: { current: HTMLDivElement | null };
 }) => {
 	const [loaded, setLoaded] = useState(false);
 	const [error, setError] = useState(false);
 
 	const ref = useRef<HTMLImageElement | null>(null);
-
-	useEffect(() => {
-		if (!image) {
-			return;
-		}
-		const preload = new Image();
-		preload.onload = () => {
-			setLoaded(true);
-		};
-		preload.onerror = () => {
-			setError(true);
-		};
-		preload.src = image?.url || "";
-	}, [image]);
 
 	if (loading || error || !image) {
 		return <Skeleton className="min-h-86 w-full" />;
@@ -473,23 +460,23 @@ const ImageComponent = ({
 					? "pointer-events-none hover:shadow-none"
 					: "pointer-events-auto"
 			}`}
-			onClick={() => {
-				if (!ref.current || !listRef.current) {
-					return;
-				}
-				const viewer = new Viewer(ref.current, {});
-				viewer.view(0);
-			}}
 		>
-			{!loaded && <Skeleton className="min-h-86 w-full" />}
-			{loaded && (
+			{!loaded && <Skeleton className="min-h-full w-full" />}
+			{
 				<img
 					ref={ref}
 					src={image?.url}
 					alt={image?.altText || "image"}
-					className="w-full h-full object-cover transition-all min-h-76"
+					className={`w-full object-center object-cover transition-all md:max-h-none max-h-200`}
+					style={{ height: Math.min(image.height, maxHeight) }}
+					onLoad={() => {
+						setLoaded(true);
+					}}
+					onError={() => {
+						setError(true);
+					}}
 				/>
-			)}
+			}
 		</div>
 	);
 };
@@ -500,26 +487,49 @@ const ListImage = ({
 	ref,
 	loadingMore,
 	error,
+	lastElementRef,
 }: {
-	data: { col1: TImage[]; col2: TImage[]; col3: TImage[] };
+	data: TImage[];
 	loading?: boolean;
 	ref: { current: HTMLDivElement | null };
 	loadingMore?: boolean;
 	error?: Error | null;
+	lastElementRef: { current: HTMLDivElement | null };
 }) => {
 	const isMobile = useIsMobile();
 
 	const listCol = useMemo(() => {
+		let cols = [[], [], []] as Array<TImage[]>;
+		let heights = [0, 0, 0];
+
 		if (isMobile) {
-			const cols1 = data?.col1;
-			const cols2 = data?.col2;
-			return [cols1, cols2];
+			cols = [[], []];
+			heights = [0, 0];
 		}
-		const cols1 = data?.col1;
-		const cols2 = data?.col2;
-		const cols3 = data?.col3;
-		return [cols1, cols2, cols3];
+
+		for (const image of data) {
+			const i = heights.indexOf(Math.min(...heights));
+			cols[i].push(image);
+			heights[i] += Math.min(image.height, maxHeight);
+		}
+
+		return cols;
 	}, [data, isMobile]);
+
+	useEffect(() => {
+		const list = ref.current;
+		if (!list) return;
+
+		const gallery = new Viewer(list, {
+			title: false,
+		});
+
+		return () => {
+			gallery.destroy();
+		};
+
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [loading, loadingMore]);
 
 	if (loading) {
 		return (
@@ -528,7 +538,7 @@ const ListImage = ({
 					<div className="w-full" key={index}>
 						{Array.from({ length: isMobile ? 5 : 10 }).map((_, key) => (
 							<div key={key} className="p-3 transition-all">
-								<ImageComponent image={null} loading={loading} listRef={ref} />
+								<ImageComponent image={null} loading={loading} />
 							</div>
 						))}
 					</div>
@@ -536,8 +546,6 @@ const ListImage = ({
 			</div>
 		);
 	}
-
-	const totalLength = data.col1.length + data.col2.length + data.col3.length;
 
 	if (error) {
 		return (
@@ -552,7 +560,7 @@ const ListImage = ({
 		);
 	}
 
-	return totalLength ? (
+	return data.length ? (
 		<div className="grid md:grid-cols-3 py-12 sm:grid-cols-2" ref={ref}>
 			{listCol.map((cols, index) => (
 				<div className="w-full flex flex-col gap-2" key={index}>
@@ -560,29 +568,22 @@ const ListImage = ({
 						cols.map((item, key) => {
 							return (
 								<div key={key} className="p-3 transition-all">
-									<ImageComponent
-										image={item}
-										loading={loading}
-										listRef={ref}
-									/>
+									<ImageComponent image={item} loading={loading} />
 								</div>
 							);
 						})}
 					{loadingMore && (
 						<div className="w-full" key={index}>
-							{Array.from({ length: 5 }).map((_, key) => (
+							{Array.from({ length: 10 }).map((_, key) => (
 								<div key={key} className="p-3 transition-all">
-									<ImageComponent
-										image={null}
-										loading={loadingMore}
-										listRef={ref}
-									/>
+									<ImageComponent image={null} loading={loadingMore} />
 								</div>
 							))}
 						</div>
 					)}
 				</div>
 			))}
+			<div ref={lastElementRef} className="h-0.5 bg-transparent" />
 		</div>
 	) : (
 		<div className="flex-1 text-center text-2xl py-24 text-neutral-400 font-semibold">
@@ -597,7 +598,7 @@ const ListImage = ({
 	);
 };
 
-function useFetchInitialData({
+function useFetchData({
 	sortValue,
 	searchParams,
 }: {
@@ -606,26 +607,15 @@ function useFetchInitialData({
 }) {
 	const paramsString = searchParams.toString();
 
-	const startCol1Ref = useRef<number>(0);
-	const startCol2Ref = useRef<number>(10);
-	const startCol3Ref = useRef<number>(20);
-	const limitRef = useRef<number>(10);
-	const isCalledInitialApi = useRef<boolean>(false);
-	const limit = 10;
-
 	const isMobile = useIsMobile();
 
-	useEffect(() => {
-		if (isMobile) {
-			limitRef.current = 5;
-		} else {
-			limitRef.current = 10;
-		}
-	}, [isMobile]);
+	const limitRef = useRef<number>(10);
+	const isCalledInitialApi = useRef<boolean>(false);
+	const limit = isMobile ? 15 : 30;
 
 	const getApiUrl = useCallback(
-		(start: number) => {
-			const api = `/images?_start=${start}&_limit=${limit}${
+		(page: number) => {
+			const api = `/images?_page=${page}&_limit=${limit}${
 				!paramsString.includes("_sort") && !paramsString.includes("_order")
 					? `&_sort=createdAt&_order=${sortValue}`
 					: ""
@@ -634,28 +624,21 @@ function useFetchInitialData({
 			return api;
 		},
 
-		[paramsString, sortValue]
+		[paramsString, sortValue, limit]
+	);
+
+	const { data, isLoading, setSize, size, error } = useSWRInfinite(
+		// eslint-disable-next-line @typescript-eslint/no-unused-vars
+		(index, _prevPage) => {
+			return getApiUrl(index + 1);
+		},
+		fetcher
 	);
 
 	const {
-		data: col1,
-		error: error1,
-		isLoading: isLoading1,
-	} = useSWR(getApiUrl(0), fetcher);
-	const {
-		data: col2,
+		data: totalItems,
 		error: error2,
 		isLoading: isLoading2,
-	} = useSWR(getApiUrl(10), fetcher);
-	const {
-		data: col3,
-		error: error3,
-		isLoading: isLoading3,
-	} = useSWR(getApiUrl(20), isMobile ? null : fetcher);
-	const {
-		data: totalItems,
-		error: error4,
-		isLoading: isLoading4,
 	} = useSWR(
 		`/images?_start=0&${
 			paramsString ? `&${paramsString.replace("query", "q")}` : ""
@@ -663,87 +646,29 @@ function useFetchInitialData({
 		fetcher
 	);
 
-	useEffect(() => {
-		startCol1Ref.current = 0;
-		startCol2Ref.current = 10;
-		startCol3Ref.current = 20;
-		limitRef.current = isMobile ? 5 : 10;
-		isCalledInitialApi.current = false;
-	}, [
-		searchParams,
-		isMobile,
-		startCol1Ref,
-		startCol2Ref,
-		startCol3Ref,
-		limitRef,
-		isCalledInitialApi,
-		col1,
-		col2,
-		col3,
-		totalItems,
-	]);
-
-	if (error1 || error2 || error3 || error4) {
-		return {
-			data: null,
-			loading: false,
-			error: error1 || error2 || error3 || error4,
-			startCol1Ref,
-			startCol2Ref,
-			startCol3Ref,
-			totalItems: 0,
-			limitRef,
-			isCalledInitialApi,
-		};
-	}
+	const allData = useMemo(() => {
+		return data ? data.flat() : [];
+	}, [data]);
 
 	if (isMobile) {
-		return {
-			data: {
-				col1: (col1 as TImage[]) || [],
-				col2: (col2 as TImage[]) || [],
-				col3: [],
-			},
-			loading: isLoading1 || isLoading2 || isLoading3 || isLoading4,
-			error: null,
-			startCol1Ref,
-			startCol2Ref,
-			startCol3Ref,
-			totalItems:
-				(Array.isArray(totalItems) ? totalItems.length : totalItems?.total) ||
-				0,
-			limitRef,
-			isCalledInitialApi,
-		};
 	}
 
 	return {
-		data: {
-			col1: (col1 as TImage[]) || [],
-			col2: (col2 as TImage[]) || [],
-			col3: (col3 as TImage[]) || [],
-		},
-		loading: isLoading1 || isLoading2 || isLoading3 || isLoading4,
-		error: null,
-		startCol1Ref,
-		startCol2Ref,
-		startCol3Ref,
+		data: allData,
+		loading: isLoading || isLoading2,
+		error: error || error2,
 		totalItems:
 			(Array.isArray(totalItems) ? totalItems.length : totalItems?.total) || 0,
 		limitRef,
 		isCalledInitialApi,
+		size,
+		setSize,
 	};
 }
 
 const ListImageContainer = () => {
 	const [openFilter, setOpenFilter] = useState(false);
 
-	const [data, setdata] = useState<{
-		col1: TImage[];
-		col2: TImage[];
-		col3: TImage[];
-	}>({ col1: [], col2: [], col3: [] });
-	const [totalItems, setTotalItems] = useState(10);
 	const [loadingMore, setLoadingMore] = useState(false);
 
 	const searchParams = useSearchParams();
@@ -752,18 +677,9 @@ const ListImageContainer = () => {
 	const sortValue = searchParams.get("_order") || "desc";
 
 	const listRef = useRef<HTMLDivElement>(null);
+	const lastElementRef = useRef<HTMLDivElement | null>(null);
 
-	const {
-		data: initialData,
-		loading,
-		error,
-		totalItems: totalItemsInitial,
-		startCol1Ref,
-		startCol2Ref,
-		startCol3Ref,
-		limitRef,
-		isCalledInitialApi,
-	} = useFetchInitialData({
+	const { data, loading, error, totalItems, size, setSize } = useFetchData({
 		sortValue,
 		searchParams,
 	});
@@ -779,135 +695,57 @@ const ListImageContainer = () => {
 		);
 	}, [searchParams]);
 
-	const getImages = useCallback(
-		async (start = 0) => {
-			try {
-				const paramsString = searchParams.toString();
-				const api = `/images?_start=${start}&_limit=${limitRef.current}${
-					!paramsString.includes("_sort") && !paramsString.includes("_order")
-						? `&_sort=createdAt&_order=${sortValue}`
-						: ""
-				}${paramsString ? `&${paramsString.replace("query", "q")}` : ""}`;
-				const res = await get(api);
-
-				if (Array.isArray(res)) {
-					return { data: res, total: res.length };
-				} else {
-					return res as {
-						data: TImage[];
-						total: number;
-					};
-				}
-			} catch (error) {
-				throw error;
-			}
-		},
-		[searchParams, sortValue, limitRef]
-	);
-
 	const handleShowMore = useCallback(async () => {
+		if (
+			loading ||
+			loadingMore ||
+			!data.length ||
+			!lastElementRef.current ||
+			data.length >= totalItems
+		) {
+			return;
+		}
+
 		try {
 			setLoadingMore(true);
 			await sleep(1000);
-
-			if (isMobile) {
-				limitRef.current = 5;
-				startCol1Ref.current = startCol2Ref.current;
-				startCol2Ref.current = startCol1Ref.current + 10;
-				const [newCol1, newCol2] = await Promise.all([
-					getImages(startCol1Ref.current),
-					getImages(startCol2Ref.current),
-				]);
-				setdata((prev) => {
-					const col1 = [...prev.col1, ...newCol1.data];
-					const col2 = [...prev.col2, ...newCol2.data];
-					return { col1, col2, col3: [] };
-				});
-			} else {
-				limitRef.current = 10;
-				startCol1Ref.current = startCol3Ref.current;
-				startCol2Ref.current = startCol1Ref.current + 10;
-				startCol3Ref.current = startCol2Ref.current + 10;
-				const [newCol1, newCol2, newCol3] = await Promise.all([
-					getImages(startCol1Ref.current),
-					getImages(startCol2Ref.current),
-					getImages(startCol3Ref.current),
-				]);
-				setdata((prev) => {
-					const col1 = [...prev.col1, ...newCol1.data];
-					const col2 = [...prev.col2, ...newCol2.data];
-					const col3 = [...prev.col3, ...newCol3.data];
-					return { col1, col2, col3 };
-				});
-			}
+			setSize(size + 1);
+			console.log("Load more images");
 		} catch (error) {
 			console.log(error);
 		} finally {
-			setLoadingMore(false);
+			setTimeout(() => {
+				setLoadingMore(false);
+			}, 1000);
 		}
-	}, [getImages, isMobile, startCol1Ref, startCol2Ref, startCol3Ref, limitRef]);
+	}, [setSize, size, loading, loadingMore, data, lastElementRef, totalItems]);
 
-	const scrollBottom = useCallback(() => {
-		const list = listRef.current;
-
-		const curr_totalItems =
-			(data.col1.length || 0) +
-			(data.col2.length || 0) +
-			(data.col3.length || 0);
+	useEffect(() => {
+		const lastElement = lastElementRef.current;
 
 		if (
-			!list ||
+			!lastElement ||
 			loading ||
-			!curr_totalItems ||
-			curr_totalItems >= totalItems ||
-			loadingMore
+			!data.length ||
+			loadingMore ||
+			data.length >= totalItems
 		) {
 			return;
 		}
 
-		const heightScroll = window.scrollY + window.innerHeight;
-		const listHeight = list.clientHeight + list.offsetTop;
+		const observer = new IntersectionObserver((entries) => {
+			if (entries[0].isIntersecting) {
+				handleShowMore();
+				console.log("Intersecting");
+			}
+		});
 
-		if (heightScroll + 100 >= listHeight) {
-			handleShowMore();
-		}
-	}, [loading, data, totalItems, handleShowMore, loadingMore]);
-
-	useEffect(() => {
-		const list = listRef.current;
-
-		const canScroll = !(
-			!list ||
-			loading ||
-			(data.col1.length === 0 &&
-				data.col2.length === 0 &&
-				data.col3.length === 0) ||
-			loadingMore
-		);
-
-		if (!canScroll) {
-			return;
-		}
-
-		window.addEventListener("scroll", scrollBottom);
+		observer.observe(lastElement);
 
 		return () => {
-			window.removeEventListener("scroll", scrollBottom);
+			observer.disconnect();
 		};
-	}, [data, scrollBottom, loading, loadingMore]);
-
-	useEffect(() => {
-		if (
-			initialData &&
-			initialData.col1.length &&
-			!loading &&
-			!isCalledInitialApi.current
-		) {
-			isCalledInitialApi.current = true;
-			setTotalItems(totalItemsInitial);
-			setdata(initialData);
-		}
-	}, [initialData, loading, totalItemsInitial, isCalledInitialApi]);
+	}, [handleShowMore, loading, loadingMore, data, totalItems]);
 
 	return (
 		<div className="py-12 flex md:gap-4 md:px-0 px-2 relative">
@@ -966,6 +804,7 @@ const ListImageContainer = () => {
 					loading={loading}
 					ref={listRef}
 					loadingMore={loadingMore}
+					lastElementRef={lastElementRef}
 				/>
 			</div>
 		</div>
