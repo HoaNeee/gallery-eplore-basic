@@ -61,7 +61,6 @@ const FilterPanel = ({
 	openFilter: boolean;
 	setOpenFilter: Dispatch<boolean>;
 }) => {
-	const [categories, setCategories] = useState<TCategory[]>([]);
 	const [heightRange, setHeightRange] = useState<[number, number]>([0, 1000]);
 	const [widthRange, setWidthRange] = useState<[number, number]>([0, 1000]);
 
@@ -76,6 +75,25 @@ const FilterPanel = ({
 	const [filterValues, setFilterValues] = useState(initialFilterValues);
 
 	const searchParams = useSearchParams();
+
+	const { data: maxHeight } = useSWR(
+		"/images?_sort=height&_order=desc&_limit=1",
+		fetcher
+	);
+	const { data: minHeight } = useSWR(
+		"/images?_sort=height&_order=asc&_limit=1",
+		fetcher
+	);
+	const { data: maxWidth } = useSWR(
+		"/images?_sort=width&_order=desc&_limit=1",
+		fetcher
+	);
+	const { data: minWidth } = useSWR(
+		"/images?_sort=width&_order=asc&_limit=1",
+		fetcher
+	);
+
+	const { data: categories } = useSWR("/categories", fetcher);
 
 	const updateFilterValues = useCallback(
 		(
@@ -133,42 +151,26 @@ const FilterPanel = ({
 	);
 
 	useEffect(() => {
-		const fetchData = async () => {
-			try {
-				const res = await get("/categories");
-				setCategories(Array.isArray(res) ? res : []);
+		if (maxHeight && minHeight && maxWidth && minWidth) {
+			const minHeightData =
+				minHeight.data?.[0]?.height || minHeight[0]?.height || 0;
+			const maxHeightData =
+				maxHeight.data?.[0]?.height || maxHeight[0]?.height || 1000;
+			const minWidthData = minWidth.data?.[0]?.width || minWidth[0]?.width || 0;
+			const maxWidthData =
+				maxWidth.data?.[0]?.width || maxWidth[0]?.width || 1000;
 
-				const [maxHeight, minHeight, maxWidth, minWidth] = await Promise.all([
-					get("/images?_sort=height&_order=desc&_limit=1"),
-					get("/images?_sort=height&_order=asc&_limit=1"),
-					get("/images?_sort=width&_order=desc&_limit=1"),
-					get("/images?_sort=width&_order=asc&_limit=1"),
-				]);
-
-				const minHeightData =
-					minHeight.data?.[0]?.height || minHeight[0]?.height || 0;
-				const maxHeightData =
-					maxHeight.data?.[0]?.height || maxHeight[0]?.height || 1000;
-				const minWidthData =
-					minWidth.data?.[0]?.width || minWidth[0]?.width || 0;
-				const maxWidthData =
-					maxWidth.data?.[0]?.width || maxWidth[0]?.width || 1000;
-
-				setHeightRange([minHeightData, maxHeightData]);
-				setWidthRange([minWidthData, maxWidthData]);
-				updateInitialValuesFilter(
-					minWidthData,
-					maxWidthData,
-					minHeightData,
-					maxHeightData
-				);
-			} catch (error) {
-				console.log("Error fetching categories:", error);
-			}
-		};
-
-		fetchData();
-	}, [updateInitialValuesFilter]);
+			// eslint-disable-next-line react-hooks/set-state-in-effect
+			setHeightRange([minHeightData, maxHeightData]);
+			setWidthRange([minWidthData, maxWidthData]);
+			updateInitialValuesFilter(
+				minWidthData,
+				maxWidthData,
+				minHeightData,
+				maxHeightData
+			);
+		}
+	}, [maxHeight, minHeight, maxWidth, minWidth, updateInitialValuesFilter]);
 
 	const handleFilter = useCallback(() => {
 		const current_query = new URLSearchParams(searchParams.toString());
@@ -224,20 +226,21 @@ const FilterPanel = ({
 	];
 
 	return (
-		<>
-			<div
-				style={{
-					maxWidth: openFilter ? "280px" : 0,
-					width: "100%",
-					opacity: openFilter ? 1 : 0,
-					pointerEvents: openFilter ? "auto" : "none",
-					whiteSpace: "nowrap",
-				}}
-				className="transition-all duration-300 ease-in-out overflow md:sticky md:top-18 md:mt-0 mt-8 self-start"
-			>
+		<div
+			style={{
+				maxWidth: openFilter ? "280px" : "0px",
+				opacity: openFilter ? 1 : 0,
+				pointerEvents: openFilter ? "auto" : "none",
+				whiteSpace: "nowrap",
+			}}
+			className={`transition-all duration-300 ease-in-out overflow md:sticky md:top-18 md:mt-0 mt-8 self-start ${
+				openFilter ? "md:w-70 w-full" : "w-full md:w-0"
+			}`}
+		>
+			<div className="relative">
 				<Accordion
 					type="multiple"
-					className="w-full max-h-full overflow-hidden overflow-y-auto"
+					className="md:absolute md:w-70 w-full"
 					defaultValue={["direction", "categoryId", "width", "height"]}
 				>
 					<AccordionItem value="direction">
@@ -284,20 +287,21 @@ const FilterPanel = ({
 							>
 								Tất cả
 							</Button>
-							{categories.map((cat) => (
-								<Button
-									key={cat.id}
-									variant={
-										filterValues.categoryId === cat.id ? "default" : "outline"
-									}
-									className=""
-									onClick={() => {
-										updateFilterValues("categoryId", cat.id);
-									}}
-								>
-									{cat.name}
-								</Button>
-							))}
+							{categories &&
+								categories?.map((cat: TCategory) => (
+									<Button
+										key={cat.id}
+										variant={
+											filterValues.categoryId === cat.id ? "default" : "outline"
+										}
+										className=""
+										onClick={() => {
+											updateFilterValues("categoryId", cat.id);
+										}}
+									>
+										{cat.name}
+									</Button>
+								))}
 						</AccordionContent>
 					</AccordionItem>
 					<AccordionItem value="width">
@@ -376,14 +380,14 @@ const FilterPanel = ({
 							</div>
 						</AccordionContent>
 					</AccordionItem>
+					<div>
+						<Button className="w-full mt-8 py-6" onClick={handleFilter}>
+							Áp dụng bộ lọc
+						</Button>
+					</div>
 				</Accordion>
-				<div>
-					<Button className="w-full mt-4 py-6" onClick={handleFilter}>
-						Áp dụng bộ lọc
-					</Button>
-				</div>
 			</div>
-		</>
+		</div>
 	);
 };
 
@@ -413,15 +417,15 @@ const SortSelector = () => {
 				handleSortChange(e as "asc" | "desc");
 			}}
 		>
-			<SelectTrigger className="py-6 text-base font-semibold min-w-24">
+			<SelectTrigger className="py-6 md:text-base md:font-semibold min-w-24">
 				<SelectValue placeholder="Sắp xếp theo" />
 			</SelectTrigger>
 			<SelectContent>
 				<SelectGroup>
-					<SelectItem className="text-base font-semibold" value="desc">
+					<SelectItem className="md:text-base md:font-semibold" value="desc">
 						Mới nhất
 					</SelectItem>
-					<SelectItem className="text-base font-semibold" value="asc">
+					<SelectItem className="md:text-base md:font-semibold" value="asc">
 						Cũ nhất
 					</SelectItem>
 				</SelectGroup>
@@ -439,25 +443,36 @@ const ImageComponent = ({
 	loading?: boolean;
 	listRef: { current: HTMLDivElement | null };
 }) => {
-	const [loaded, setLoaded] = useState(true);
+	const [loaded, setLoaded] = useState(false);
 	const [error, setError] = useState(false);
 
 	const ref = useRef<HTMLImageElement | null>(null);
 
 	useEffect(() => {
-		const img = new Image();
-		img.onload = () => setLoaded(false);
-		img.onerror = () => setError(true);
-		img.src = image?.url || "";
+		if (!image) {
+			return;
+		}
+		const preload = new Image();
+		preload.onload = () => {
+			setLoaded(true);
+		};
+		preload.onerror = () => {
+			setError(true);
+		};
+		preload.src = image?.url || "";
 	}, [image]);
 
-	if (loading || error || loaded || !image) {
-		return <Skeleton className="min-h-100 w-full" />;
+	if (loading || error || !image) {
+		return <Skeleton className="min-h-86 w-full" />;
 	}
 
 	return (
 		<div
-			className={`overflow-hidden rounded-lg transition-all hover:shadow-xl cursor-pointer shadow-xs duration-300`}
+			className={`overflow-hidden rounded-lg transition-all hover:shadow-xl cursor-pointer shadow-xs duration-300 relative bg-gray-50/50 ${
+				!loaded
+					? "pointer-events-none hover:shadow-none"
+					: "pointer-events-auto"
+			}`}
 			onClick={() => {
 				if (!ref.current || !listRef.current) {
 					return;
@@ -466,12 +481,15 @@ const ImageComponent = ({
 				viewer.view(0);
 			}}
 		>
-			<img
-				ref={ref}
-				src={image?.url}
-				alt={image?.altText || "image"}
-				className="w-full h-full object-cover transition-all min-h-76"
-			/>
+			{!loaded && <Skeleton className="min-h-86 w-full" />}
+			{loaded && (
+				<img
+					ref={ref}
+					src={image?.url}
+					alt={image?.altText || "image"}
+					className="w-full h-full object-cover transition-all min-h-76"
+				/>
+			)}
 		</div>
 	);
 };
@@ -490,16 +508,6 @@ const ListImage = ({
 	error?: Error | null;
 }) => {
 	const isMobile = useIsMobile();
-
-	const galleryRef = useRef<Viewer | null>(null);
-
-	useEffect(() => {
-		if (!ref.current || typeof window === "undefined") {
-			return;
-		}
-
-		galleryRef.current = new Viewer(ref.current, {});
-	}, [ref]);
 
 	const listCol = useMemo(() => {
 		if (isMobile) {
@@ -669,6 +677,10 @@ function useFetchInitialData({
 		startCol3Ref,
 		limitRef,
 		isCalledInitialApi,
+		col1,
+		col2,
+		col3,
+		totalItems,
 	]);
 
 	if (error1 || error2 || error3 || error4) {
@@ -913,7 +925,7 @@ const ListImageContainer = () => {
 								<SheetTitle />
 								<SheetDescription />
 							</SheetHeader>
-							<div className="grid flex-1 auto-rows-min gap-6 px-4">
+							<div className="grid flex-1 auto-rows-min gap-6 px-4 max-h-full overflow-hidden overflow-y-auto md:pb-0 pb-4">
 								<FilterPanel
 									openFilter={openFilter}
 									setOpenFilter={setOpenFilter}
@@ -924,12 +936,12 @@ const ListImageContainer = () => {
 				</div>
 			)}
 
-			<div className="flex-1">
+			<div className={`flex-1`}>
 				<div className="flex items-center justify-between">
 					<ButtonGroup>
 						<Button
 							variant="outline"
-							className="py-6 text-base"
+							className="py-6 md:text-base font-normal md:font-medium"
 							onClick={() => setOpenFilter(!openFilter)}
 						>
 							{!openFilter ? <Settings2 /> : <ArrowLeft />}
@@ -939,7 +951,7 @@ const ListImageContainer = () => {
 						{hasFilters.length ? (
 							<Button
 								variant="outline"
-								className="py-6 text-base"
+								className="py-6 md:text-base"
 								onClick={() => router.push(pathName)}
 							>
 								<X />

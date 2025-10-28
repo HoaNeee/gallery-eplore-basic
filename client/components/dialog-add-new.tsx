@@ -37,6 +37,7 @@ import { getImageSize } from "@/utils/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { Textarea } from "./ui/textarea";
 import useSWR, { mutate } from "swr";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const isAccessURL = (url: string) => {
 	if (!url.trim()) {
@@ -388,6 +389,8 @@ const DialogAddNewImageContent = () => {
 	const pathName = usePathname();
 	const searchParams = useSearchParams();
 
+	const isMobile = useIsMobile();
+
 	const isUrl = action === "url";
 	const isUpload = action === "upload";
 
@@ -531,18 +534,59 @@ const DialogAddNewImageContent = () => {
 			return;
 		}
 
-		const current_url = `${pathName}${
-			searchParams.toString()
-				? `?${searchParams.toString().replace("query", "q")}`
-				: ""
-		}`;
+		const paramsString = searchParams.toString();
+		const sortValue = searchParams.get("_order") || "desc";
+		const limit = isMobile ? 5 : 10;
+		const start = 0;
 
-		if (isUpload) {
-			if (files && files.length) {
-				const promises = [];
-				for (const file of files) {
-					const src = URL.createObjectURL(file);
-					const { width, height } = await getImageSize(src);
+		const current_url = `/images?_start=${start}&_limit=${limit}${
+			!paramsString.includes("_sort") && !paramsString.includes("_order")
+				? `&_sort=createdAt&_order=${sortValue}`
+				: ""
+		}${paramsString ? `&${paramsString.replace("query", "q")}` : ""}`;
+
+		try {
+			if (isUpload) {
+				if (files && files.length) {
+					const promises = [];
+					for (const file of files) {
+						const src = URL.createObjectURL(file);
+						const { width, height } = await getImageSize(src);
+						const direction =
+							width > height
+								? "landscape"
+								: width < height
+								? "portrait"
+								: "square";
+						const payload = {
+							url: src,
+							altText: file.name,
+							category: objectUrl.category,
+							tags: objectUrl.tags.join(","),
+							width,
+							height,
+							createdAt: new Date().toISOString(),
+							updatedAt: new Date().toISOString(),
+							direction,
+						};
+
+						promises.push(async () => {
+							return await post("/images", payload);
+						});
+					}
+					await Promise.all(promises.map((p) => p()));
+				}
+
+				setOpen(false);
+				if (pathName === "/") {
+					mutate(current_url);
+				}
+				return;
+			}
+
+			if (isUrl) {
+				if (objectUrl.url.trim() !== "") {
+					const { width, height } = await getImageSize(objectUrl.url);
 					const direction =
 						width > height
 							? "landscape"
@@ -550,8 +594,8 @@ const DialogAddNewImageContent = () => {
 							? "portrait"
 							: "square";
 					const payload = {
-						url: src,
-						altText: file.name,
+						url: objectUrl.url,
+						altText: objectUrl.altText,
 						category: objectUrl.category,
 						tags: objectUrl.tags.join(","),
 						width,
@@ -560,41 +604,26 @@ const DialogAddNewImageContent = () => {
 						updatedAt: new Date().toISOString(),
 						direction,
 					};
-
-					promises.push(async () => {
-						return await post("/images", payload);
-					});
+					await post("/images", payload);
 				}
-				await Promise.all(promises.map((p) => p()));
+				setOpen(false);
+				if (pathName === "/") {
+					mutate(current_url);
+				}
 			}
-			setOpen(false);
-			mutate(current_url);
-			return;
+		} catch (error) {
+			console.log(error);
 		}
-
-		if (isUrl) {
-			if (objectUrl.url.trim() !== "") {
-				const { width, height } = await getImageSize(objectUrl.url);
-				const direction =
-					width > height ? "landscape" : width < height ? "portrait" : "square";
-				const payload = {
-					url: objectUrl.url,
-					altText: objectUrl.altText,
-					category: objectUrl.category,
-					tags: objectUrl.tags.join(","),
-					width,
-					height,
-					createdAt: new Date().toISOString(),
-					updatedAt: new Date().toISOString(),
-					direction,
-				};
-				await post("/images", payload);
-			}
-		}
-
-		setOpen(false);
-		mutate(current_url);
-	}, [objectUrl, isUpload, isUrl, files, disabled, pathName, searchParams]);
+	}, [
+		objectUrl,
+		isUpload,
+		isUrl,
+		files,
+		disabled,
+		pathName,
+		searchParams,
+		isMobile,
+	]);
 
 	return (
 		<>
