@@ -1,17 +1,30 @@
 "use client";
 
 import { Search } from "lucide-react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 
-const FormSearch = ({ isHeader = false }: { isHeader?: boolean }) => {
+const FormSearch = ({
+	isHeader = false,
+	searchParams,
+}: {
+	isHeader?: boolean;
+	searchParams: { [key: string]: string | string[] | undefined };
+}) => {
 	const router = useRouter();
-	const searchParams = useSearchParams();
 
-	const query = searchParams.get("query") || "";
+	const query = searchParams?.query || "";
 
 	const handleSearch = (e: React.FormEvent<HTMLFormElement>) => {
 		e.preventDefault();
-		const lastParams = searchParams.toString();
+		const lastParams = Object.keys(searchParams)
+			.filter((key) => key !== "query")
+			.map(
+				(key) =>
+					`${encodeURIComponent(key)}=${encodeURIComponent(
+						String(searchParams[key])
+					)}`
+			)
+			.join("&");
 		const input = e.currentTarget[0] as HTMLInputElement;
 		const query = input.value.trim();
 

@@ -4,7 +4,7 @@ import { aliasName } from "@/utils/contants";
 import Link from "next/link";
 import DialogAddNewImage from "./dialog-add-new";
 import FormSearch from "./form-search";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { Menu } from "lucide-react";
 import {
 	Sheet,
@@ -29,7 +29,10 @@ const AppLogo = () => {
 const AppHeader = () => {
 	const [open, setOpen] = useState(false);
 
+	const searchParams = useSearchParams();
 	const pathName = usePathname();
+
+	const objectSearch = Object.fromEntries(searchParams.entries() || []) || {};
 
 	return (
 		<header className="sticky py-5 px-4 border-muted border-b top-0 left-0 w-full bg-white z-10 self-start">
@@ -37,7 +40,7 @@ const AppHeader = () => {
 				<AppLogo />
 				{pathName.startsWith("/search") && (
 					<div className="max-w-3/5 w-full md:block hidden">
-						<FormSearch isHeader />
+						<FormSearch isHeader searchParams={objectSearch} />
 					</div>
 				)}
 				<div className="md:flex gap-3 hidden">
@@ -63,7 +66,7 @@ const AppHeader = () => {
 						<div className="grid auto-rows-min gap-4 mt-4">
 							{pathName.startsWith("/search") && (
 								<div className="w-full px-2">
-									<FormSearch isHeader />
+									<FormSearch isHeader searchParams={objectSearch} />
 								</div>
 							)}
 							<div className="px-4 mx-auto">

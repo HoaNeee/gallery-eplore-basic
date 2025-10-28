@@ -13,9 +13,16 @@ import {
 import { Button, ButtonTransition } from "./ui/button";
 import { Label } from "./ui/label";
 import { Input } from "./ui/input";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+	Suspense,
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import { FileUploadComponent } from "./file-upload-component";
-import { useRouter } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { TCategory } from "@/types/category.types";
 import { fetcher, post } from "@/utils/request";
 import {
@@ -364,7 +371,7 @@ const SelectCategory = ({
 	);
 };
 
-const DialogAddNewImage = () => {
+const DialogAddNewImageContent = () => {
 	const [action, setAction] = useState<"none" | "url" | "upload">("none");
 	const [files, setFiles] = useState<File[]>([]);
 	const [objectUrl, setObjectUrl] = useState<ObjectUrl>(initialObjectUrl);
@@ -378,6 +385,8 @@ const DialogAddNewImage = () => {
 		fetcher
 	);
 	const { data: images } = useSWR("/images", fetcher);
+	const pathName = usePathname();
+	const searchParams = useSearchParams();
 
 	const isUrl = action === "url";
 	const isUpload = action === "upload";
@@ -395,8 +404,6 @@ const DialogAddNewImage = () => {
 			!objectUrl.category
 		);
 	}, [objectUrl, files, isUrl, isUpload]);
-
-	const router = useRouter();
 
 	useEffect(() => {
 		if (images && images.length) {
@@ -524,6 +531,12 @@ const DialogAddNewImage = () => {
 			return;
 		}
 
+		const current_url = `${pathName}${
+			searchParams.toString()
+				? `?${searchParams.toString().replace("query", "q")}`
+				: ""
+		}`;
+
 		if (isUpload) {
 			if (files && files.length) {
 				const promises = [];
@@ -555,7 +568,7 @@ const DialogAddNewImage = () => {
 				await Promise.all(promises.map((p) => p()));
 			}
 			setOpen(false);
-			router.refresh();
+			mutate(current_url);
 			return;
 		}
 
@@ -580,8 +593,8 @@ const DialogAddNewImage = () => {
 		}
 
 		setOpen(false);
-		router.refresh();
-	}, [objectUrl, isUpload, isUrl, files, router, disabled]);
+		mutate(current_url);
+	}, [objectUrl, isUpload, isUrl, files, disabled, pathName, searchParams]);
 
 	return (
 		<>
@@ -617,6 +630,14 @@ const DialogAddNewImage = () => {
 				setOpen={setOpenDialogAddCategory}
 			/>
 		</>
+	);
+};
+
+const DialogAddNewImage = () => {
+	return (
+		<Suspense fallback={<></>}>
+			<DialogAddNewImageContent />
+		</Suspense>
 	);
 };
 
