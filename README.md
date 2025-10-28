@@ -51,4 +51,4 @@ Inspiration: [Pixel](https://www.pexels.com/vi-vn/).
 
 Backend: [Json Server](https://github.com/typicode/json-server/tree/v0?tab=readme-ov-file)
 
-Frontend: [Shadcn](https://ui.shadcn.com/docs/installation), [Tailwind Css](https://tailwindcss.com/), [NextJs](https://nextjs.org/docs/app/getting-started/installation), [ViewerJs](https://fengyuanchen.github.io/viewerjs/)
+Frontend: [Shadcn](https://ui.shadcn.com/docs/installation), [Tailwind Css](https://tailwindcss.com/), [NextJs](https://nextjs.org/docs/app/getting-started/installation), [ViewerJs](https://fengyuanchen.github.io/viewerjs/), [SWR](https://swr.vercel.app/docs/getting-started)

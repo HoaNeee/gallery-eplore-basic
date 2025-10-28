@@ -206,6 +206,7 @@ const FilterPanel = ({
 		const url = `${pathName}?${current_query.toString()}`;
 
 		router.push(url, { scroll: false });
+		// mutate(url);
 	}, [
 		filterValues,
 		valueRange,
@@ -601,6 +602,7 @@ function useFetchInitialData({
 	const startCol2Ref = useRef<number>(10);
 	const startCol3Ref = useRef<number>(20);
 	const limitRef = useRef<number>(10);
+	const isCalledInitialApi = useRef<boolean>(false);
 	const limit = 10;
 
 	const isMobile = useIsMobile();
@@ -613,42 +615,35 @@ function useFetchInitialData({
 		}
 	}, [isMobile]);
 
+	const getApiUrl = useCallback(
+		(start: number) => {
+			const api = `/images?_start=${start}&_limit=${limit}${
+				!paramsString.includes("_sort") && !paramsString.includes("_order")
+					? `&_sort=createdAt&_order=${sortValue}`
+					: ""
+			}${paramsString ? `&${paramsString.replace("query", "q")}` : ""}`;
+
+			return api;
+		},
+
+		[paramsString, sortValue]
+	);
+
 	const {
 		data: col1,
 		error: error1,
 		isLoading: isLoading1,
-	} = useSWR(
-		`/images?_start=0&_limit=${limit}${
-			!paramsString.includes("_sort") && !paramsString.includes("_order")
-				? `&_sort=createdAt&_order=${sortValue}`
-				: ""
-		}${paramsString ? `&${paramsString.replace("query", "q")}` : ""}`,
-		fetcher
-	);
+	} = useSWR(getApiUrl(0), fetcher);
 	const {
 		data: col2,
 		error: error2,
 		isLoading: isLoading2,
-	} = useSWR(
-		`/images?_start=10&_limit=${limit}${
-			!paramsString.includes("_sort") && !paramsString.includes("_order")
-				? `&_sort=createdAt&_order=${sortValue}`
-				: ""
-		}${paramsString ? `&${paramsString.replace("query", "q")}` : ""}`,
-		fetcher
-	);
+	} = useSWR(getApiUrl(10), fetcher);
 	const {
 		data: col3,
 		error: error3,
 		isLoading: isLoading3,
-	} = useSWR(
-		`/images?_start=20&_limit=${limit}${
-			!paramsString.includes("_sort") && !paramsString.includes("_order")
-				? `&_sort=createdAt&_order=${sortValue}`
-				: ""
-		}${paramsString ? `&${paramsString.replace("query", "q")}` : ""}`,
-		isMobile ? null : fetcher
-	);
+	} = useSWR(getApiUrl(20), isMobile ? null : fetcher);
 	const {
 		data: totalItems,
 		error: error4,
@@ -660,6 +655,22 @@ function useFetchInitialData({
 		fetcher
 	);
 
+	useEffect(() => {
+		startCol1Ref.current = 0;
+		startCol2Ref.current = 10;
+		startCol3Ref.current = 20;
+		limitRef.current = isMobile ? 5 : 10;
+		isCalledInitialApi.current = false;
+	}, [
+		searchParams,
+		isMobile,
+		startCol1Ref,
+		startCol2Ref,
+		startCol3Ref,
+		limitRef,
+		isCalledInitialApi,
+	]);
+
 	if (error1 || error2 || error3 || error4) {
 		return {
 			data: null,
@@ -670,6 +681,7 @@ function useFetchInitialData({
 			startCol3Ref,
 			totalItems: 0,
 			limitRef,
+			isCalledInitialApi,
 		};
 	}
 
@@ -689,6 +701,7 @@ function useFetchInitialData({
 				(Array.isArray(totalItems) ? totalItems.length : totalItems?.total) ||
 				0,
 			limitRef,
+			isCalledInitialApi,
 		};
 	}
 
@@ -706,6 +719,7 @@ function useFetchInitialData({
 		totalItems:
 			(Array.isArray(totalItems) ? totalItems.length : totalItems?.total) || 0,
 		limitRef,
+		isCalledInitialApi,
 	};
 }
 
@@ -736,6 +750,7 @@ const ListImageContainer = () => {
 		startCol2Ref,
 		startCol3Ref,
 		limitRef,
+		isCalledInitialApi,
 	} = useFetchInitialData({
 		sortValue,
 		searchParams,
@@ -873,13 +888,14 @@ const ListImageContainer = () => {
 		if (
 			initialData &&
 			initialData.col1.length &&
-			!data.col1.length &&
-			!loading
+			!loading &&
+			!isCalledInitialApi.current
 		) {
+			isCalledInitialApi.current = true;
 			setTotalItems(totalItemsInitial);
 			setdata(initialData);
 		}
-	}, [initialData, loading, data, totalItemsInitial]);
+	}, [initialData, loading, totalItemsInitial, isCalledInitialApi]);
 
 	return (
 		<div className="py-12 flex md:gap-4 md:px-0 px-2 relative">
