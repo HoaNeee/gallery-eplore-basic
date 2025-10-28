@@ -17,7 +17,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FileUploadComponent } from "./file-upload-component";
 import { useRouter } from "next/navigation";
 import { TCategory } from "@/types/category.types";
-import { get, post } from "@/utils/request";
+import { fetcher, post } from "@/utils/request";
 import {
 	Select,
 	SelectContent,
@@ -29,6 +29,7 @@ import { ChevronDown, Plus, X } from "lucide-react";
 import { getImageSize } from "@/utils/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { Textarea } from "./ui/textarea";
+import useSWR, { mutate } from "swr";
 
 const isAccessURL = (url: string) => {
 	if (!url.trim()) {
@@ -71,12 +72,20 @@ const SelectTags = ({
 }) => {
 	const [isFocused, setIsFocused] = useState(false);
 	const [value, setValue] = useState("");
-	const [filteredTags, setFilteredTags] = useState<string[]>(tags);
+	const [filteredTags, setFilteredTags] = useState<string[]>(tags || []);
 
 	useEffect(() => {
+		if (!ref.current) {
+			return;
+		}
+
+		if (!Array.isArray(tags)) {
+			return;
+		}
+
 		if (!value) {
 			// eslint-disable-next-line react-hooks/set-state-in-effect
-			setFilteredTags(tags);
+			setFilteredTags(tags || []);
 			return;
 		}
 		setFilteredTags(
@@ -85,13 +94,6 @@ const SelectTags = ({
 	}, [value, tags]);
 
 	const ref = useRef<HTMLInputElement | null>(null);
-
-	useEffect(() => {
-		const input = ref.current;
-		if (!input) {
-			return;
-		}
-	}, []);
 
 	const saveTags = useCallback(() => {
 		if (!value.trim()) {
@@ -111,12 +113,10 @@ const SelectTags = ({
 		(e: React.KeyboardEvent) => {
 			if (e.key === "Enter") {
 				e.preventDefault();
-				if (value.trim()) {
-					saveTags();
-				}
+				saveTags();
 			}
 		},
-		[saveTags, value]
+		[saveTags]
 	);
 
 	return (
@@ -224,11 +224,41 @@ const DialogAddNewCategory = ({
 		description: "",
 	});
 
+	const handAddNewCategory = useCallback(
+		async (val: { name: string; description?: string }) => {
+			try {
+				const slug = val.name
+					.toLowerCase()
+					.trim()
+					.replace(/[^a-z0-9]+/g, "-")
+					.replace(/^-+|-+$/g, "");
+
+				const payload = {
+					name: val.name,
+					slug,
+					description: val.description || "",
+					createdAt: new Date().toISOString(),
+					updatedAt: new Date().toISOString(),
+				};
+				await post("/categories", payload);
+				setOpen(false);
+				mutate("/categories");
+			} catch (error) {
+				console.log(error);
+			}
+		},
+		[setOpen]
+	);
+
 	useEffect(() => {
 		if (!open) {
 			// eslint-disable-next-line react-hooks/set-state-in-effect
 			setData({ name: "", description: "" });
 		}
+
+		return () => {
+			setData({ name: "", description: "" });
+		};
 	}, [open]);
 
 	return (
@@ -278,9 +308,7 @@ const DialogAddNewCategory = ({
 					</DialogClose>
 					<Button
 						onClick={() => {
-							if (onAddNew) {
-								onAddNew(data);
-							}
+							handAddNewCategory(data);
 						}}
 						disabled={!data.name.trim()}
 					>
@@ -324,11 +352,12 @@ const SelectCategory = ({
 							<TooltipContent>Thêm danh mục</TooltipContent>
 						</Tooltip>
 					</div>
-					{categories.map((category) => (
-						<SelectItem key={category.id} value={category.id}>
-							{category.name}
-						</SelectItem>
-					))}
+					{categories &&
+						categories.map((category) => (
+							<SelectItem key={category.id} value={category.id}>
+								{category.name}
+							</SelectItem>
+						))}
 				</SelectContent>
 			</SelectTrigger>
 		</Select>
@@ -340,13 +369,23 @@ const DialogAddNewImage = () => {
 	const [files, setFiles] = useState<File[]>([]);
 	const [objectUrl, setObjectUrl] = useState<ObjectUrl>(initialObjectUrl);
 	const [open, setOpen] = useState(false);
-	const [categories, setCategories] = useState<TCategory[]>([]);
 	const [tags, setTags] = useState<string[]>([]);
 
 	const [openDialogAddCategory, setOpenDialogAddCategory] = useState(false);
 
+	const { data: categories } = useSWR(
+		"/categories?_sort=createdAt&_order=desc",
+		fetcher
+	);
+	const { data: images } = useSWR("/images", fetcher);
+
 	const isUrl = action === "url";
 	const isUpload = action === "upload";
+
+	function resetAction() {
+		setAction("none");
+		setObjectUrl(initialObjectUrl);
+	}
 
 	const disabled = useMemo(() => {
 		return (
@@ -359,36 +398,20 @@ const DialogAddNewImage = () => {
 
 	const router = useRouter();
 
-	function resetAction() {
-		setAction("none");
-		setObjectUrl(initialObjectUrl);
-	}
-
 	useEffect(() => {
-		const fetchData = async () => {
-			try {
-				const [cats, imgs] = await Promise.all([
-					get("/categories"),
-					get("/images"),
-				]);
-				if (Array.isArray(cats)) {
-					setCategories(cats);
+		if (images && images.length) {
+			const tagsSet = new Set<string>();
+			if (Array.isArray(images)) {
+				for (const img of images) {
+					const imgTags =
+						img.tags?.split(",").filter((tag: string) => tag.trim()) || [];
+					imgTags.forEach((tag: string) => tagsSet.add(tag.trim()));
 				}
-				const tagsSet = new Set<string>();
-				if (Array.isArray(imgs)) {
-					for (const img of imgs) {
-						const imgTags =
-							img.tags?.split(",").filter((tag: string) => tag.trim()) || [];
-						imgTags.forEach((tag: string) => tagsSet.add(tag.trim()));
-					}
-				}
-				setTags(Array.from(tagsSet).sort((a, b) => a.localeCompare(b)));
-			} catch (error) {
-				console.error("Failed to fetch categories:", error);
 			}
-		};
-		fetchData();
-	}, []);
+			// eslint-disable-next-line react-hooks/set-state-in-effect
+			setTags(Array.from(tagsSet).sort((a, b) => a.localeCompare(b)));
+		}
+	}, [images]);
 
 	useEffect(() => {
 		if (!open) {
@@ -560,32 +583,6 @@ const DialogAddNewImage = () => {
 		router.refresh();
 	}, [objectUrl, isUpload, isUrl, files, router, disabled]);
 
-	const handAddNewCategory = useCallback(
-		async (val: { name: string; description?: string }) => {
-			try {
-				const slug = val.name
-					.toLowerCase()
-					.trim()
-					.replace(/[^a-z0-9]+/g, "-")
-					.replace(/^-+|-+$/g, "");
-
-				const payload = {
-					name: val.name,
-					slug,
-					description: val.description || "",
-					createdAt: new Date().toISOString(),
-					updatedAt: new Date().toISOString(),
-				};
-				const res = await post("/categories", payload);
-				setOpenDialogAddCategory(false);
-				setCategories((prev) => [...prev, res]);
-			} catch (error) {
-				console.log(error);
-			}
-		},
-		[]
-	);
-
 	return (
 		<>
 			<Dialog open={open} onOpenChange={setOpen}>
@@ -618,7 +615,6 @@ const DialogAddNewImage = () => {
 			<DialogAddNewCategory
 				open={openDialogAddCategory}
 				setOpen={setOpenDialogAddCategory}
-				onAddNew={handAddNewCategory}
 			/>
 		</>
 	);

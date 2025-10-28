@@ -1,19 +1,32 @@
 import SearchPageClient from "@/components/search-page";
 import { get } from "@/utils/request";
+import { Metadata } from "next";
 
 const getTotalResults = async (query: string) => {
 	try {
-		const res = await get(`/images?${query.replaceAll("query", "q")}`);
+		const res = await get(`/images?${query.replace("query", "q")}`, {
+			cache: "no-store",
+		});
 		if (Array.isArray(res)) {
 			return res.length;
 		} else if (res.total) {
 			return res.total;
 		}
 		return null;
-	} catch (error) {
-		console.log(error);
+	} catch {
 		return null;
 	}
+};
+
+export const generateMetadata = async (
+	searchParams: Promise<{ [key: string]: string | string[] | undefined }>
+): Promise<Metadata> => {
+	const { keyword } = await searchParams;
+
+	return {
+		title: `${keyword || "Search"} - Search Results`,
+		description: "Search for images in the gallery.",
+	};
 };
 
 const SearchPage = async ({
@@ -50,7 +63,7 @@ const SearchPage = async ({
 				) : (
 					<p className="text-neutral-500 mt-2">Hãy nhập từ khóa tìm kiếm</p>
 				)}
-				<SearchPageClient />
+				<SearchPageClient query={query} />
 			</div>
 		</section>
 	);

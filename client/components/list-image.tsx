@@ -2,7 +2,7 @@
 "use client";
 
 import { fetcher, get } from "@/utils/request";
-import React, {
+import {
 	Dispatch,
 	useCallback,
 	useEffect,
@@ -48,39 +48,11 @@ import {
 } from "./ui/sheet";
 import { useIsMobile } from "@/hooks/use-mobile";
 import useSWR from "swr";
+import Viewer from "viewerjs";
 
-const ImageComponent = ({
-	image,
-	loading,
-}: {
-	image: TImage | null;
-	loading?: boolean;
-}) => {
-	const [loaded, setLoaded] = useState(true);
-	const [error, setError] = useState(false);
-
-	useEffect(() => {
-		const img = new Image();
-		img.onload = () => setLoaded(false);
-		img.onerror = () => setError(true);
-		img.src = image?.url || "";
-	}, [image]);
-
-	if (loading || error || loaded || !image) {
-		return <Skeleton className="min-h-100 w-full" />;
-	}
-
-	return (
-		<div
-			className={`overflow-hidden rounded-lg transition-all hover:shadow-xl cursor-pointer shadow-xs duration-300`}
-		>
-			<img
-				src={image?.url}
-				alt={image?.altText || "image"}
-				className="w-full h-full object-cover transition-all min-h-76"
-			/>
-		</div>
-	);
+const initialFilterValues = {
+	direction: "",
+	categoryId: "",
 };
 
 const FilterPanel = ({
@@ -414,6 +386,95 @@ const FilterPanel = ({
 	);
 };
 
+const SortSelector = () => {
+	const searchParams = useSearchParams();
+	const pathName = usePathname();
+	const router = useRouter();
+	const sortValue = searchParams.get("_order") || "desc";
+
+	const handleSortChange = useCallback(
+		(sortOrder: "asc" | "desc") => {
+			const params = new URLSearchParams(searchParams.toString());
+			params.set("_sort", "createdAt");
+			params.set("_order", sortOrder);
+
+			const url = `${pathName}?${params.toString()}`;
+
+			router.push(url, { scroll: false });
+		},
+		[searchParams, pathName, router]
+	);
+
+	return (
+		<Select
+			defaultValue={sortValue}
+			onValueChange={(e) => {
+				handleSortChange(e as "asc" | "desc");
+			}}
+		>
+			<SelectTrigger className="py-6 text-base font-semibold min-w-24">
+				<SelectValue placeholder="Sắp xếp theo" />
+			</SelectTrigger>
+			<SelectContent>
+				<SelectGroup>
+					<SelectItem className="text-base font-semibold" value="desc">
+						Mới nhất
+					</SelectItem>
+					<SelectItem className="text-base font-semibold" value="asc">
+						Cũ nhất
+					</SelectItem>
+				</SelectGroup>
+			</SelectContent>
+		</Select>
+	);
+};
+
+const ImageComponent = ({
+	image,
+	loading,
+	listRef,
+}: {
+	image: TImage | null;
+	loading?: boolean;
+	listRef: { current: HTMLDivElement | null };
+}) => {
+	const [loaded, setLoaded] = useState(true);
+	const [error, setError] = useState(false);
+
+	const ref = useRef<HTMLImageElement | null>(null);
+
+	useEffect(() => {
+		const img = new Image();
+		img.onload = () => setLoaded(false);
+		img.onerror = () => setError(true);
+		img.src = image?.url || "";
+	}, [image]);
+
+	if (loading || error || loaded || !image) {
+		return <Skeleton className="min-h-100 w-full" />;
+	}
+
+	return (
+		<div
+			className={`overflow-hidden rounded-lg transition-all hover:shadow-xl cursor-pointer shadow-xs duration-300`}
+			onClick={() => {
+				if (!ref.current || !listRef.current) {
+					return;
+				}
+				const viewer = new Viewer(ref.current, {});
+				viewer.view(0);
+			}}
+		>
+			<img
+				ref={ref}
+				src={image?.url}
+				alt={image?.altText || "image"}
+				className="w-full h-full object-cover transition-all min-h-76"
+			/>
+		</div>
+	);
+};
+
 const ListImage = ({
 	data,
 	loading,
@@ -428,6 +489,16 @@ const ListImage = ({
 	error?: Error | null;
 }) => {
 	const isMobile = useIsMobile();
+
+	const galleryRef = useRef<Viewer | null>(null);
+
+	useEffect(() => {
+		if (!ref.current || typeof window === "undefined") {
+			return;
+		}
+
+		galleryRef.current = new Viewer(ref.current, {});
+	}, [ref]);
 
 	const listCol = useMemo(() => {
 		if (isMobile) {
@@ -448,7 +519,7 @@ const ListImage = ({
 					<div className="w-full" key={index}>
 						{Array.from({ length: isMobile ? 5 : 10 }).map((_, key) => (
 							<div key={key} className="p-3 transition-all">
-								<ImageComponent image={null} loading={loading} />
+								<ImageComponent image={null} loading={loading} listRef={ref} />
 							</div>
 						))}
 					</div>
@@ -480,7 +551,11 @@ const ListImage = ({
 						cols.map((item, key) => {
 							return (
 								<div key={key} className="p-3 transition-all">
-									<ImageComponent image={item} loading={loading} />
+									<ImageComponent
+										image={item}
+										loading={loading}
+										listRef={ref}
+									/>
 								</div>
 							);
 						})}
@@ -488,7 +563,11 @@ const ListImage = ({
 						<div className="w-full" key={index}>
 							{Array.from({ length: 5 }).map((_, key) => (
 								<div key={key} className="p-3 transition-all">
-									<ImageComponent image={null} loading={loadingMore} />
+									<ImageComponent
+										image={null}
+										loading={loadingMore}
+										listRef={ref}
+									/>
 								</div>
 							))}
 						</div>
@@ -507,11 +586,6 @@ const ListImage = ({
 			</h2>
 		</div>
 	);
-};
-
-const initialFilterValues = {
-	direction: "",
-	categoryId: "",
 };
 
 function useFetchInitialData({
@@ -651,6 +725,8 @@ const ListImageContainer = () => {
 	const router = useRouter();
 	const sortValue = searchParams.get("_order") || "desc";
 
+	const listRef = useRef<HTMLDivElement>(null);
+
 	const {
 		data: initialData,
 		loading,
@@ -666,8 +742,6 @@ const ListImageContainer = () => {
 	});
 
 	const isMobile = useIsMobile();
-
-	const listRef = useRef<HTMLDivElement>(null);
 
 	const hasFilters = useMemo(() => {
 		const params = Array.from(searchParams.entries());
@@ -775,14 +849,16 @@ const ListImageContainer = () => {
 	useEffect(() => {
 		const list = listRef.current;
 
-		if (
+		const canScroll = !(
 			!list ||
 			loading ||
 			(data.col1.length === 0 &&
 				data.col2.length === 0 &&
 				data.col3.length === 0) ||
 			loadingMore
-		) {
+		);
+
+		if (!canScroll) {
 			return;
 		}
 
@@ -794,63 +870,16 @@ const ListImageContainer = () => {
 	}, [data, scrollBottom, loading, loadingMore]);
 
 	useEffect(() => {
-		console.log(data);
-		if (initialData && data.col1.length === 0 && !loading) {
+		if (
+			initialData &&
+			initialData.col1.length &&
+			!data.col1.length &&
+			!loading
+		) {
 			setTotalItems(totalItemsInitial);
 			setdata(initialData);
 		}
 	}, [initialData, loading, data, totalItemsInitial]);
-
-	// useEffect(() => {
-	// 	const fetchDataInitial = async () => {
-	// 		setLoading(true);
-
-	// 		try {
-	// 			startCol1Ref.current = 0;
-	// 			startCol2Ref.current = 10;
-	// 			startCol3Ref.current = 20;
-	// 			await sleep(1000);
-
-	// 			if (isMobile) {
-	// 				limit.current = 15;
-	// 				const [col1, col2] = await Promise.all([
-	// 					getImages(startCol1Ref.current),
-	// 					getImages(startCol2Ref.current),
-	// 				]);
-	// 				setdata({ col1: col1.data, col2: col2.data, col3: [] });
-	// 				setTotalItems(col1.total || col2.total || 10);
-	// 			} else {
-	// 				limit.current = 30;
-	// 				const [col1, col2, col3] = await Promise.all([
-	// 					getImages(startCol1Ref.current),
-	// 					getImages(startCol2Ref.current),
-	// 					getImages(startCol3Ref.current),
-	// 				]);
-	// 				setdata({ col1: col1.data, col2: col2.data, col3: col3.data });
-	// 				setTotalItems(col1.total || col2.total || col3.total || 10);
-	// 			}
-	// 		} catch (error) {
-	// 			console.error("Error fetching data:", error);
-	// 		} finally {
-	// 			setLoading(false);
-	// 		}
-	// 	};
-
-	// 	fetchDataInitial();
-	// }, [getImages, isMobile, startCol1Ref, startCol2Ref, startCol3Ref]);
-
-	const handleSortChange = useCallback(
-		(sortOrder: "asc" | "desc") => {
-			const params = new URLSearchParams(searchParams.toString());
-			params.set("_sort", "createdAt");
-			params.set("_order", sortOrder);
-
-			const url = `${pathName}?${params.toString()}`;
-
-			router.push(url, { scroll: false });
-		},
-		[searchParams, pathName, router]
-	);
 
 	return (
 		<div className="py-12 flex md:gap-4 md:px-0 px-2 relative">
@@ -901,26 +930,7 @@ const ListImageContainer = () => {
 							</Button>
 						) : null}
 					</ButtonGroup>
-					<Select
-						defaultValue={sortValue}
-						onValueChange={(e) => {
-							handleSortChange(e as "asc" | "desc");
-						}}
-					>
-						<SelectTrigger className="py-6 text-base font-semibold min-w-24">
-							<SelectValue placeholder="Sắp xếp theo" />
-						</SelectTrigger>
-						<SelectContent>
-							<SelectGroup>
-								<SelectItem className="text-base font-semibold" value="desc">
-									Mới nhất
-								</SelectItem>
-								<SelectItem className="text-base font-semibold" value="asc">
-									Cũ nhất
-								</SelectItem>
-							</SelectGroup>
-						</SelectContent>
-					</Select>
+					<SortSelector />
 				</div>
 				<ListImage
 					data={data}
