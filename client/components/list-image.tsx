@@ -51,7 +51,9 @@ import useSWR from "swr";
 import useSWRInfinite from "swr/infinite";
 import Viewer from "viewerjs";
 
-const maxHeight = 800;
+const maxHeight = 700;
+const maxWidth = 500;
+const minHeight = 300;
 
 const initialFilterValues = {
 	direction: "",
@@ -450,8 +452,10 @@ const ImageComponent = ({
 	const ref = useRef<HTMLImageElement | null>(null);
 
 	if (loading || error || !image) {
-		return <Skeleton className="min-h-86 w-full" />;
+		return <Skeleton className="min-h-100 w-full" />;
 	}
+
+	const { width, height } = image;
 
 	return (
 		<div
@@ -460,6 +464,7 @@ const ImageComponent = ({
 					? "pointer-events-none hover:shadow-none"
 					: "pointer-events-auto"
 			}`}
+			data-id={image.id}
 		>
 			{!loaded && <Skeleton className="min-h-full w-full" />}
 			{
@@ -467,8 +472,13 @@ const ImageComponent = ({
 					ref={ref}
 					src={image?.url}
 					alt={image?.altText || "image"}
-					className={`w-full object-center object-cover transition-all md:max-h-none max-h-200`}
-					style={{ height: Math.min(image.height, maxHeight) }}
+					className={`w-full object-center object-cover transition-all md:max-h-none max-h-150`}
+					style={{
+						height:
+							width > maxWidth && width > height
+								? "auto"
+								: Math.min(Math.max(height, minHeight), maxHeight),
+					}}
 					onLoad={() => {
 						setLoaded(true);
 					}}
@@ -510,10 +520,16 @@ const ListImage = ({
 		for (const image of data) {
 			const i = heights.indexOf(Math.min(...heights));
 			cols[i].push(image);
-			heights[i] += Math.min(image.height, maxHeight);
+			const { width, height } = image;
+			if (width > maxWidth && width > height) {
+				const scaledHeight = (maxWidth / width) * height;
+				heights[i] += Math.min(Math.max(scaledHeight, minHeight), maxHeight);
+			} else {
+				heights[i] += Math.min(Math.max(height, minHeight), maxHeight);
+			}
 		}
 
-		return cols;
+		return { cols, heights };
 	}, [data, isMobile]);
 
 	useEffect(() => {
@@ -560,30 +576,40 @@ const ListImage = ({
 		);
 	}
 
+	const { cols, heights } = listCol;
+	const indexMin = heights.indexOf(Math.min(...heights));
+
 	return data.length ? (
 		<div className="grid md:grid-cols-3 py-12 sm:grid-cols-2" ref={ref}>
-			{listCol.map((cols, index) => (
+			{cols.map((cols, index) => (
 				<div className="w-full flex flex-col gap-2" key={index}>
 					{cols &&
-						cols.map((item, key) => {
+						cols.map((item) => {
 							return (
-								<div key={key} className="p-3 transition-all">
+								<div key={item.id} className="p-3 transition-all">
 									<ImageComponent image={item} loading={loading} />
 								</div>
 							);
 						})}
 					{loadingMore && (
 						<div className="w-full" key={index}>
-							{Array.from({ length: 10 }).map((_, key) => (
+							{Array.from({ length: 3 }).map((_, key) => (
 								<div key={key} className="p-3 transition-all">
 									<ImageComponent image={null} loading={loadingMore} />
 								</div>
 							))}
 						</div>
 					)}
+					<div className="md:block hidden">
+						{indexMin === index && !isMobile && (
+							<div
+								className="h-0.5 bg-transparent md:block hidden"
+								ref={lastElementRef}
+							/>
+						)}
+					</div>
 				</div>
 			))}
-			<div ref={lastElementRef} className="h-0.5 bg-transparent" />
 		</div>
 	) : (
 		<div className="flex-1 text-center text-2xl py-24 text-neutral-400 font-semibold">
@@ -601,20 +627,17 @@ const ListImage = ({
 function useFetchData({
 	sortValue,
 	searchParams,
+	isMobile,
 }: {
 	sortValue: string;
 	searchParams: ReadonlyURLSearchParams;
+	isMobile: boolean;
 }) {
 	const paramsString = searchParams.toString();
 
-	const isMobile = useIsMobile();
-
-	const limitRef = useRef<number>(10);
-	const isCalledInitialApi = useRef<boolean>(false);
-	const limit = isMobile ? 15 : 30;
-
 	const getApiUrl = useCallback(
 		(page: number) => {
+			const limit = isMobile ? 15 : 30;
 			const api = `/images?_page=${page}&_limit=${limit}${
 				!paramsString.includes("_sort") && !paramsString.includes("_order")
 					? `&_sort=createdAt&_order=${sortValue}`
@@ -624,7 +647,7 @@ function useFetchData({
 			return api;
 		},
 
-		[paramsString, sortValue, limit]
+		[paramsString, sortValue, isMobile]
 	);
 
 	const { data, isLoading, setSize, size, error } = useSWRInfinite(
@@ -650,17 +673,12 @@ function useFetchData({
 		return data ? data.flat() : [];
 	}, [data]);
 
-	if (isMobile) {
-	}
-
 	return {
 		data: allData,
 		loading: isLoading || isLoading2,
 		error: error || error2,
 		totalItems:
 			(Array.isArray(totalItems) ? totalItems.length : totalItems?.total) || 0,
-		limitRef,
-		isCalledInitialApi,
 		size,
 		setSize,
 	};
@@ -679,12 +697,13 @@ const ListImageContainer = () => {
 	const listRef = useRef<HTMLDivElement>(null);
 	const lastElementRef = useRef<HTMLDivElement | null>(null);
 
+	const isMobile = useIsMobile();
+
 	const { data, loading, error, totalItems, size, setSize } = useFetchData({
 		sortValue,
 		searchParams,
+		isMobile,
 	});
-
-	const isMobile = useIsMobile();
 
 	const hasFilters = useMemo(() => {
 		const params = Array.from(searchParams.entries());
@@ -708,17 +727,15 @@ const ListImageContainer = () => {
 
 		try {
 			setLoadingMore(true);
+			//smooth
 			await sleep(1000);
 			setSize(size + 1);
-			console.log("Load more images");
 		} catch (error) {
 			console.log(error);
 		} finally {
-			setTimeout(() => {
-				setLoadingMore(false);
-			}, 1000);
+			setLoadingMore(false);
 		}
-	}, [setSize, size, loading, loadingMore, data, lastElementRef, totalItems]);
+	}, [setSize, size, loading, loadingMore, data, totalItems]);
 
 	useEffect(() => {
 		const lastElement = lastElementRef.current;
@@ -726,19 +743,21 @@ const ListImageContainer = () => {
 		if (
 			!lastElement ||
 			loading ||
-			!data.length ||
 			loadingMore ||
+			!data.length ||
 			data.length >= totalItems
 		) {
 			return;
 		}
 
-		const observer = new IntersectionObserver((entries) => {
-			if (entries[0].isIntersecting) {
-				handleShowMore();
-				console.log("Intersecting");
-			}
-		});
+		const observer = new IntersectionObserver(
+			(entries) => {
+				if (entries[0].isIntersecting) {
+					handleShowMore();
+				}
+			},
+			{ rootMargin: "20px" }
+		);
 
 		observer.observe(lastElement);
 
@@ -746,6 +765,23 @@ const ListImageContainer = () => {
 			observer.disconnect();
 		};
 	}, [handleShowMore, loading, loadingMore, data, totalItems]);
+
+	//UI Effects
+	useEffect(() => {
+		const lastElement = lastElementRef.current;
+
+		if (!lastElement) {
+			return;
+		}
+
+		if (loading || loadingMore) {
+			lastElement.style.display = "none";
+		} else {
+			setTimeout(() => {
+				lastElement.style.display = "block";
+			}, 1000);
+		}
+	}, [loading, loadingMore]);
 
 	return (
 		<div className="py-12 flex md:gap-4 md:px-0 px-2 relative">
@@ -806,6 +842,11 @@ const ListImageContainer = () => {
 					loadingMore={loadingMore}
 					lastElementRef={lastElementRef}
 				/>
+				<div className="md:hidden block">
+					{isMobile && (
+						<div ref={lastElementRef} className="h-0.5 bg-transparent" />
+					)}
+				</div>
 			</div>
 		</div>
 	);
