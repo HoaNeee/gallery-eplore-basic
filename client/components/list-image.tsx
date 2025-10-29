@@ -467,26 +467,34 @@ const ImageComponent = ({
 			data-id={image.id}
 		>
 			{!loaded && <Skeleton className="min-h-full w-full" />}
-			{
-				<img
-					ref={ref}
-					src={image?.url}
-					alt={image?.altText || "image"}
-					className={`w-full object-center object-cover transition-all md:max-h-none max-h-150`}
-					style={{
-						height:
-							width > maxWidth && width > height
-								? "auto"
-								: Math.min(Math.max(height, minHeight), maxHeight),
-					}}
-					onLoad={() => {
-						setLoaded(true);
-					}}
-					onError={() => {
-						setError(true);
-					}}
-				/>
-			}
+
+			<img
+				ref={ref}
+				src={image?.url}
+				alt={image?.altText || "image"}
+				className={`w-full object-center object-cover transition-all md:max-h-none max-h-150`}
+				style={{
+					height:
+						width > maxWidth && width > height
+							? "auto"
+							: Math.min(Math.max(height, minHeight), maxHeight),
+				}}
+				onClick={() => {
+					if (!ref.current) {
+						return;
+					}
+					const viewer = new Viewer(ref.current, {
+						title: false,
+					});
+					viewer.view(0);
+				}}
+				onLoad={() => {
+					setLoaded(true);
+				}}
+				onError={() => {
+					setError(true);
+				}}
+			/>
 		</div>
 	);
 };
@@ -532,20 +540,22 @@ const ListImage = ({
 		return { cols, heights };
 	}, [data, isMobile]);
 
-	useEffect(() => {
-		const list = ref.current;
-		if (!list) return;
+	//not working
+	// useEffect(() => {
+	// 	const list = ref.current;
+	// 	console.log(list);
+	// 	if (!list) return;
 
-		const gallery = new Viewer(list, {
-			title: false,
-		});
+	// 	const gallery = new Viewer(list, {
+	// 		title: false,
+	// 	});
 
-		return () => {
-			gallery.destroy();
-		};
+	// 	return () => {
+	// 		gallery.destroy();
+	// 	};
 
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [loading, loadingMore]);
+	// 	// eslint-disable-next-line react-hooks/exhaustive-deps
+	// }, [loading, loadingMore]);
 
 	if (loading) {
 		return (
